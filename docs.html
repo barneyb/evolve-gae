@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Evolve API</title>
+    <style>
+    /* docs */
+    dt > code { white-space: pre }
+    code { display: inline-block; padding: 1px 3px; border: 1px solid #ecc; border-radius: 3px; background-color: #fcfcfc }
+    dd { margin-bottom: 1.2em }
+    dd dt { display: block; float: left; clear: left; margin-right: 5px }
+    dd dd { margin-bottom: 0 }
+    /* driver */
+    #driver-ui,
+    #auth-ui { display: none }
+    .per-evolution { display: none; width: 900px;  margin: 0 auto }
+    table { clear: left }
+    #select { width: 16.75em; font-weight: bold; font-size: 300%; list-style: none; padding: 0 }
+    #select .tile { float: left; width: 5em; text-align: center; background-color: #fcfcfc; border: 1px solid #eee; color: #aaa; list-style: none; margin: 0.25em; padding: 0.75em 0; -webkit-user-select: none }
+    #select .tile.selectable { cursor: pointer; background-color: #eee; border-color: #ccc; color: #000 }
+    pre,
+    .box { padding: 5px 10px; border: 1px solid #ecc; border-radius: 5px; background-color: #f9f9f9 }
+    </style>
+</head>
+<body>
+    <h1>Evolve API</h1>
+
+    <p>The Evolve API provides a simple way to manage evolution of
+    series-of-integer "genomes".  You have to be logged in to use it, as it
+    stores multiple distinct evolutionary paths, including full ancestry.
+    Currently there is no way to view other user's evolutions.
+    </p>
+
+    <p>The core data type is a genome, which is an array of integers. Keys
+    are used as unique identifiers for all other objects.  Keys are opaque
+    strings containing only alphanumerics (<code>a-z</code>,
+    <code>A-Z</code>, <code>0-9</code>), colon (<code>:</code>), and
+    dash (<code>-</code>) characters.
+    </p>
+
+    <h2>Endpoints</h2>
+
+    <dl>
+        <dt><code>GET    /</code></dt>
+        <dd>this page that you're reading!</dd>
+        <dt><code>GET    /-/evolutions/</code></dt>
+        <dd>list of user's evolutions, returned as an array of objects with the following keys:
+            <dl>
+                <dt><code>id: &lt;key&gt;</code></dt>
+                <dd>the id of the evolution used in URLs</dd>
+                <dt><code>survivor: &lt;genome&gt;</code></dt>
+                <dd>the genome of the most recent survivor</dd>
+                <dt><code>ancestorCount: &lt;integer&gt;</code></dt>
+                <dd>the number of ancestors the current survivor has</dd>
+            </dl>
+        </dd>
+        <dt><code>POST   /-/evolutions/</code></dt>
+        <dd>create a new evolution and <code>302</code> to it.  The request body must be an object with the follwing key:
+            <dl>
+                <dt><code>genome: &lt;genome&gt;</code></dt>
+                <dd>the initial genome to evolve from</dd>
+            </dl>
+            You may also specify a seed for the psuedo-RNG used by the evolution:
+            <dl>
+                <dt><code>seed: &lt;integer&gt;</code></dt>
+                <dd>an integer seed for the PRNG to use.  Zero may not be used as a</dd>
+            </dl>
+        </dd>
+        <dt><code>GET    /-/evolutions/&lt;key&gt;</code></dt>
+        <dd>get an evolution's info as an object with the following keys:
+            <dl>
+                <dt><code>id: &lt;key&gt;</code></dt>
+                <dd>the id of the evolution used in URLs</dd>
+                <dt><code>survivor: &lt;genome&gt;</code></dt>
+                <dd>the genome of the most recent survivor</dd>
+                <dt><code>ancestorCount: &lt;integer&gt;</code></dt>
+                <dd>the number of ancestors the current survivor has</dd>
+                <dt><code>ancestry: [&lt;genome&gt;, ...]</code></dt>
+                <dd>the most recent survivor's complete ancestry.  The first item is the genome the evolution was started with; the last item is the prior generation's survivor.</dd>
+            </dl>
+            The latest survivor is not included in the ancestry, but will be appended when the next survivor is selected.
+        </dd>
+        <dt><code>DELETE /-/evolutions/&lt;key&gt;</code></dt>
+        <dd>delete an evolution</dd>
+        <dt><code>GET    /-/evolutions/&lt;key&gt;/evolve</code></dt>
+        <dd>evolve and return a new generation as an array of genomes.
+            <dl>
+                <dt><code>?n=&lt;integer&gt;</code></dt>
+                <dd>the number of individuals in the new generation, 8 by default</dd>
+            </dl>
+        </dd>
+        <dt><code>POST   /-/evolutions/&lt;key&gt;/evolve</code></dt>
+        <dd>select the survivor from the prior generation by providing it's genome as the request body.  Note that the the method <em>does not</em> validate that the passed genome was returned by the most recent call to <code>/evolve</code> for this evolution, but it <em>does</em> validate that it is exactly one point mutation away from the evolution's previous survivor.
+        </dd>
+    </dl>
+
+    <h2>Driver</h2>
+
+    <p>This driver uses a simple three-gene genome and develops the
+    phenotype by simply plugging the genes into the quadratic formula and
+    taking the root with greater magnitude.  If the discrimant is negative
+    (meaining the roots are complex), it will be inverted to keep things
+    real. If the first gene (the <code>a</code> in the formula) is zero,
+    then it's not a quadratic equation, and instead the single y-intercept
+    is used.  Thus the phenotype is also a number, though not necessarily
+    an integer.  If you know your way around JavaScript, this page's
+    <code>window.DEVELOPMENT</code> function encapsulates all the logic.
+    </p>
+
+    <p>Obviously this is a completely pointless and uninteresting
+    implementation of the development portion of evolution.  It's also
+    uninteresting because it ships as part of the API server.  The intended
+    use is for third-parties to provide their own custom UI atop the API,
+    and especially provide their own development portion to convert the
+    genotype into the phenotype.  Dawkins' <em>Biomorphs</em> would be a
+    super simple example, but much more interesting phenotypes could be
+    created with the vast increases of computing power in the past 30 years.
+    </p>
+
+    <div id="driver-ui">
+        <h3 id="driver-top">Evolutions:</h3>
+
+        <ul id="select" class="per-evolution">
+            <li class="tile selectable"></li>
+            <li class="tile selectable"></li>
+            <li class="tile selectable"></li>
+            <li class="tile selectable"></li>
+            <li class="tile survivor"></li>
+            <li class="tile selectable"></li>
+            <li class="tile selectable"></li>
+            <li class="tile selectable"></li>
+            <li class="tile selectable"></li>
+        </ul>
+
+        <pre id="view" class="per-evolution"></pre>
+
+        <div id="delete" class="per-evolution">
+            <p>Are you sure you want to delete this evolution?
+            </p>
+            <form method="delete">
+                <button>Yes, Delete!</button>
+                <a href="#">No, I changed my mind.</a>
+            </form>
+        </div>
+
+        <table>
+        <thead>
+            <tr>
+                <th>Genotype</th>
+                <th>Phenotype</th>
+                <th>Ancestors</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="evolutions">
+            <tr data-key="$key" data-phenotype="$phenotype">
+                <td><code>$survivor</code></td>
+                <td><code class="phenotype">$phenotype</code></td>
+                <td>$ancestorCount</td>
+                <td><button class="evolve">evolve</button></td>
+                <td><button class="view">view</button></td>
+                <td><button class="delete">delete</button></td>
+            </tr>
+        </tbody>
+        </table>
+
+        <p><button id="new-evolution">New Evolution</button></p>
+    </div>
+
+    <div id="auth-ui">
+        <p class="box">You must <a href="-/auth">Log In</a> to use the driver.
+        </p>
+    </div>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script>
+// deliberately "poluting" the window scope for playing in the console
+function DEVELOPMENT(g) {
+    var a = g[0],
+        b = g[1],
+        c = g[2],
+        r, discr, x1, x2;
+    if (a == 0) {
+        // non-quadratic
+        r = -c / b;
+    } else {
+        discr = b * b - 4 * a * c;
+        if (discr < 0) {
+            // imaginary roots...
+            discr = -discr
+        }
+        x1 = (-b + Math.sqrt(discr)) / (2 * a),
+        x2 = (-b - Math.sqrt(discr)) / (2 * a);
+        r = Math.abs(x1) > Math.abs(x2) ? x1 : x2;
+    }
+    return r.toString().substr(0, 7);
+}
+jQuery.noConflict()(function($) {
+    function oops() {
+        alert("something bad happened.");
+    }
+    function randRange(n) {
+        return Math.floor(Math.random() * n);
+    }
+    function closeEvolution() {
+        $(".per-evolution").hide();
+    }
+    function loadEvolutions(whenDone) {
+        var $es = $("#evolutions").empty();
+        $.ajax("-/evolutions/").done(function(data, status, jqXHR) {
+            if (jqXHR.status != 200 || ! (data instanceof Array)) {
+                $("#auth-ui").show();
+                return false;
+            }
+            $("#driver-ui").show();
+            for (var i = 0; i < data.length; i++) {
+                var e = data[i];
+                $es.append(rowTemplate
+                    .replace(/\$key/g, e.id)
+                    .replace(/\$phenotype/g, DEVELOPMENT(e.survivor))
+                    .replace(/\$survivor/g, e.survivor.join(', '))
+                    .replace(/\$ancestorCount/g, e.ancestorCount)
+                )
+            }
+        }).done(whenDone)
+        .fail(function(jqXHR, status) {
+            if (jqXHR.status == 0) {
+                $("#auth-ui").show();
+                return false;
+            }
+        });
+    }
+    function rescroll() {
+        $('html, body').animate({
+            scrollTop: $("#driver-top").offset().top
+        }, 100);
+    }
+    var rowTemplate = $("#evolutions").html();
+    loadEvolutions(rescroll);
+    $("#evolutions").on("click", ".evolve", function() {
+        closeEvolution();
+        var key = $(this).parents("tr").data("key"),
+            $select = $("#select"),
+            loadGen = function() {
+                var pheno = $("[data-key='" + key + "']").data("phenotype");
+                $select.off("click", ".selectable");
+                $.ajax("-/evolutions/" + key + "/evolve?n=8")
+                    .done(function(data) {
+                        $select.find(".selectable")
+                            .each(function(i) {
+                                $(this).attr("data-g", JSON.stringify(data[i]))
+                                    .text(DEVELOPMENT(data[i]));
+                            })
+                        .end()
+                        .find(".survivor")
+                            .each(function() {
+                                $(this).text(pheno);
+                            })
+                        .end()
+                        .show()
+                        .on("click", ".selectable", function() {
+                            $.ajax({
+                                url: "-/evolutions/" + key + "/evolve",
+                                method: "POST",
+                                contentType: "application/json",
+                                data: JSON.stringify($(this).data("g"))
+                            }).done(function() {
+                                loadEvolutions(loadGen);
+                            }).done(rescroll)
+                            .fail(oops);
+                        });
+                    }).done(rescroll)
+                    .fail(oops);
+            }
+        loadGen();
+    }).on("click", ".view", function() {
+        closeEvolution();
+        var key = $(this).parents("tr").data("key");
+        $.ajax("-/evolutions/" + key).done(function(data) {
+            $("#view").text(JSON.stringify(data, null, 2)).show();
+        }).done(rescroll)
+        .fail(oops);
+    }).on("click", ".delete", function() {
+        closeEvolution();
+        var key = $(this).parents("tr").data("key"),
+            $div = $("#delete")
+                .show()
+                .off("submit", "form")
+                .off("click", "a")
+                .on("submit", "form", function() {
+                    closeEvolution();
+                    $.ajax({
+                        url: "-/evolutions/" + key,
+                        method: "DELETE"
+                    }).done(function() {
+                        loadEvolutions(rescroll);
+                    }).fail(oops);
+                    return false;
+                })
+                .on("click", "a", function() {
+                    closeEvolution();
+                    rescroll();
+                });
+        rescroll();
+    });
+    $("#new-evolution").on("click", function() {
+        closeEvolution();
+        var genome = [
+            randRange(10),
+            randRange(20),
+            randRange(10) - 5
+        ];
+        $.ajax({
+            url: "-/evolutions/",
+            method: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({
+                genome: genome,
+            })
+        }).done(function() {
+            loadEvolutions(rescroll);
+        }).fail(oops);
+    });
+});
+</script>
+</body>
+</html>
